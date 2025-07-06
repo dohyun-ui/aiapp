@@ -1,4 +1,161 @@
+<!DOCTYPE html>
 <html>
+<head>
+    <title>Teachable Machine Image Model</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f8f0e5; /* 아주 연한 베이지색 배경 */
+            color: #4a4a4a; /* 부드러운 회색 텍스트 */
+        }
+
+        h1 {
+            color: #7f5539; /* 따뜻한 갈색 헤딩 */
+            margin-bottom: 25px;
+            font-size: 2.2em;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+
+        button {
+            background-color: #a78a7f; /* 로즈 브라운 버튼 */
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px; /* 더 둥근 모서리 */
+            cursor: pointer;
+            font-size: 1.2em;
+            font-weight: bold;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            margin-bottom: 30px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+            letter-spacing: 0.5px;
+        }
+
+        button:hover {
+            background-color: #8c736a; /* 호버 시 약간 더 어두운 로즈 브라운 */
+            transform: translateY(-2px); /* 약간 위로 뜨는 효과 */
+        }
+
+        button:active {
+            transform: translateY(0); /* 클릭 시 원래 위치로 */
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        #webcam-container {
+            border: 6px solid #d4a373; /* 따뜻한 주황빛 갈색 테두리 */
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25);
+            margin-bottom: 40px;
+            background-color: #fff;
+        }
+
+        #webcam-container canvas {
+            display: block;
+        }
+
+        #label-container {
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 7px 20px rgba(0, 0, 0, 0.18);
+            min-width: 300px;
+            text-align: center;
+        }
+
+        #label-container div {
+            font-size: 1.3em;
+            margin-bottom: 12px;
+            color: #b08968; /* 라벨을 위한 부드러운 갈색 */
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        #label-container div.highlight { /* 가장 높은 예측 강조를 위한 클래스 */
+            color: #e63946; /* 강조를 위한 눈에 띄는 빨간색 */
+            font-weight: bold;
+            font-size: 1.4em;
+        }
+
+        #label-container div:last-child {
+            margin-bottom: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI 이미지 분류기</h1>
+    <button type="button" onclick="init()">웹캠 시작</button>
+    <div id="webcam-container"></div>
+    <div id="label-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <script type="text/javascript">
+        // Teachable Machine에서 제공하는 모델 링크
+        const URL = "https://teachablemachine.withgoogle.com/models/g35_mYEAyd/"; // **여기를 당신의 모델 URL로 변경하세요!**
+
+        let model, webcam, labelContainer, maxPredictions;
+
+        // 이미지 모델 로드 및 웹캠 설정
+        async function init() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+
+            const flip = true; // 웹캠 뒤집기 여부
+            webcam = new tmImage.Webcam(200, 200, flip); // 너비, 높이, 뒤집기
+            await webcam.setup(); // 웹캠 접근 요청
+            await webcam.play();
+            window.requestAnimationFrame(loop);
+
+            // DOM에 요소 추가
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+            labelContainer = document.getElementById("label-container");
+            for (let i = 0; i < maxPredictions; i++) { // 클래스 라벨
+                labelContainer.appendChild(document.createElement("div"));
+            }
+        }
+
+        async function loop() {
+            webcam.update(); // 웹캠 프레임 업데이트
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        // 웹캠 이미지를 이미지 모델에 전달하여 예측 실행
+        async function predict() {
+            const prediction = await model.predict(webcam.canvas);
+
+            // 이전에 추가된 'highlight' 클래스 제거
+            for (let i = 0; i < maxPredictions; i++) {
+                labelContainer.childNodes[i].classList.remove('highlight');
+            }
+
+            // 확률 기준으로 정렬 (가장 높은 것이 먼저 오도록)
+            prediction.sort((a, b) => b.probability - a.probability);
+
+            for (let i = 0; i < maxPredictions; i++) {
+                const classPrediction =
+                    prediction[i].className + ": " + (prediction[i].probability * 100).toFixed(0) + "%"; // 퍼센트 형식으로 표시
+                labelContainer.childNodes[i].innerHTML = classPrediction;
+
+                // 가장 높은 확률의 예측에만 'highlight' 클래스 추가
+                if (i === 0) {
+                    labelContainer.childNodes[i].classList.add('highlight');
+                }
+            }
+        }
+    </script>
+</body>
+</html><html>
 <head>
 <title>AI어플</title>
 </head>
